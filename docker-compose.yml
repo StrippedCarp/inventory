@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: inventory-backend
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./instance:/app/instance
+      - ./app:/app/app
+      - ./ml:/app/ml
+      - ./scripts:/app/scripts
+    environment:
+      - FLASK_ENV=development
+      - FLASK_APP=run_sqlite.py
+      - SECRET_KEY=your-secret-key-change-in-production
+      - JWT_SECRET_KEY=your-jwt-secret-key-change-in-production
+    networks:
+      - inventory-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: inventory-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+    environment:
+      - REACT_APP_API_URL=http://localhost:5000/api
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - backend
+    networks:
+      - inventory-network
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+
+networks:
+  inventory-network:
+    driver: bridge
+
+volumes:
+  instance-data:
