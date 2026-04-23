@@ -5,22 +5,25 @@ from app.models import Alert
 from app.models.product import Product
 from app.models.inventory import Inventory
 from app.utils.auth_decorators import manager_or_admin_required
+from app.utils.organization_context import get_organization_id
 from datetime import datetime
 
 alerts_bp = Blueprint('alerts', __name__)
 
 @alerts_bp.route('', methods=['GET'])
+@jwt_required()
 def get_alerts():
     """Get all alerts with filtering"""
     try:
+        org_id = get_organization_id()
         status = request.args.get('status', 'active')
         severity = request.args.get('severity')
         alert_type = request.args.get('type')
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 20, type=int)
         
-        # Simple query without join to avoid issues
-        query = Alert.query
+        # Query with user filter
+        query = db.session.query(Alert).join(Product).filter(Product.organization_id == org_id)
         
         # Apply filters
         if status:
@@ -67,17 +70,21 @@ def resolve_alert(alert_id):
         return jsonify({'error': str(e)}), 500
 
 @alerts_bp.route('/check-stock-levels', methods=['POST'])
+@jwt_required()
 def check_stock_levels():
     """Check all products for low stock and create/update alerts"""
     try:
-        # First, resolve all existing low_stock alerts
-        Alert.query.filter_by(
-            alert_type='low_stock',
-            status='active'
-        ).update({'status': 'resolved'})
+        org_id = get_organization_id()
+        # First, resolve all existing low_stock alerts for this user
+        db.session.query(Alert).join(Product).filter(
+            Product.organization_id == org_id,
+            Alert.alert_type == 'low_stock',
+            Alert.status == 'active'
+        ).update({'status': 'resolved'}, synchronize_session=False)
         
-        # Get all products with low stock
+        # Get all products with low stock for this user
         low_stock_items = db.session.query(Inventory, Product).join(Product).filter(
+            Product.organization_id == org_id,
             Inventory.quantity_on_hand <= Product.reorder_point
         ).all()
         

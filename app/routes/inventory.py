@@ -4,20 +4,25 @@ from app import db
 from app.models.inventory import Inventory
 from app.models.product import Product
 from app.models.sales_transaction import SalesTransaction
+from app.models.user import User
 from app.utils.auth_decorators import manager_or_admin_required
+from app.utils.organization_context import get_organization_id, get_user_id
+from app.utils.activity_logger import log_activity
 from datetime import date
 
 inventory_bp = Blueprint('inventory', __name__)
 
 @inventory_bp.route('/items', methods=['GET'])
+@jwt_required()
 def get_inventory():
     """Get all inventory items with product details"""
     try:
+        org_id = get_organization_id()
         low_stock_only = request.args.get('low_stock', 'false').lower() == 'true'
         category = request.args.get('category')
         search = request.args.get('search')
         
-        query = db.session.query(Inventory, Product).join(Product)
+        query = db.session.query(Inventory, Product).join(Product).filter(Product.organization_id == org_id)
         
         # Apply filters
         if low_stock_only:
@@ -83,9 +88,11 @@ def get_product_inventory(product_id):
         return jsonify({'error': str(e)}), 500
 
 @inventory_bp.route('/items/<int:product_id>/adjust', methods=['POST'])
+@jwt_required()
 def adjust_inventory(product_id):
     """Adjust inventory quantity with reason tracking"""
     try:
+        org_id = get_organization_id()
         data = request.get_json()
         adjustment_type = data.get('type')  # 'add', 'remove', 'set'
         quantity = data.get('quantity')
@@ -94,7 +101,10 @@ def adjust_inventory(product_id):
         if not adjustment_type or quantity is None:
             return jsonify({'message': 'Type and quantity are required'}), 400
         
-        inventory = Inventory.query.filter_by(product_id=product_id).first()
+        inventory = db.session.query(Inventory).join(Product).filter(
+            Inventory.product_id == product_id,
+            Product.organization_id == org_id
+        ).first()
         if not inventory:
             return jsonify({'message': 'Inventory not found'}), 404
         
@@ -110,6 +120,13 @@ def adjust_inventory(product_id):
             return jsonify({'message': 'Invalid adjustment type'}), 400
         
         db.session.commit()
+        
+        # Log activity
+        user_id = get_user_id()
+        user = User.query.get(user_id)
+        product = Product.query.get(product_id)
+        if user and product:
+            log_activity(org_id, user_id, user.username, 'adjusted stock for', 'inventory', product.name)
         
         # Log the adjustment
         adjustment_log = {
@@ -131,9 +148,11 @@ def adjust_inventory(product_id):
         return jsonify({'error': str(e)}), 500
 
 @inventory_bp.route('/items/<int:product_id>/sale', methods=['POST'])
+@jwt_required()
 def record_sale(product_id):
     """Record a sale and update inventory"""
     try:
+        org_id = get_organization_id()
         data = request.get_json()
         quantity_sold = data.get('quantity_sold')
         unit_price = data.get('unit_price')
@@ -142,7 +161,10 @@ def record_sale(product_id):
             return jsonify({'message': 'Quantity and unit price are required'}), 400
         
         # Check inventory availability
-        inventory = Inventory.query.filter_by(product_id=product_id).first()
+        inventory = db.session.query(Inventory).join(Product).filter(
+            Inventory.product_id == product_id,
+            Product.organization_id == org_id
+        ).first()
         if not inventory:
             return jsonify({'message': 'Product not found in inventory'}), 404
         
@@ -180,7 +202,9 @@ def record_sale(product_id):
 def get_low_stock():
     """Get items with low stock levels"""
     try:
+        org_id = get_organization_id()
         low_stock_items = db.session.query(Inventory, Product).join(Product).filter(
+            Product.organization_id == org_id,
             Inventory.quantity_on_hand <= Product.reorder_point
         ).all()
         
@@ -205,22 +229,27 @@ def get_low_stock():
         return jsonify({'error': str(e)}), 500
 
 @inventory_bp.route('/summary', methods=['GET'])
+@jwt_required()
 def get_inventory_summary():
-    """Get inventory summary statistics"""
+    """Get inventory summary statistics for current organization"""
     try:
-        total_products = db.session.query(Product).count()
+        org_id = get_organization_id()
+        
+        total_products = db.session.query(Product).filter_by(organization_id=org_id).count()
         
         low_stock_count = db.session.query(Inventory).join(Product).filter(
+            Product.organization_id == org_id,
             Inventory.quantity_on_hand <= Product.reorder_point
         ).count()
         
-        out_of_stock_count = db.session.query(Inventory).filter(
+        out_of_stock_count = db.session.query(Inventory).join(Product).filter(
+            Product.organization_id == org_id,
             Inventory.quantity_on_hand == 0
         ).count()
         
         total_value = db.session.query(
             db.func.sum(Inventory.quantity_on_hand * Product.unit_price)
-        ).join(Product).scalar() or 0
+        ).join(Product).filter(Product.organization_id == org_id).scalar() or 0
         
         return jsonify({
             'total_products': total_products,
@@ -270,9 +299,13 @@ def create_inventory_item():
 def update_inventory_item(product_id):
     """Update inventory item"""
     try:
+        org_id = get_organization_id()
         data = request.get_json()
         
-        inventory = Inventory.query.filter_by(product_id=product_id).first()
+        inventory = db.session.query(Inventory).join(Product).filter(
+            Inventory.product_id == product_id,
+            Product.organization_id == org_id
+        ).first()
         if not inventory:
             return jsonify({'message': 'Inventory not found'}), 404
         
@@ -297,7 +330,11 @@ def update_inventory_item(product_id):
 def delete_inventory_item(product_id):
     """Delete inventory item"""
     try:
-        inventory = Inventory.query.filter_by(product_id=product_id).first()
+        org_id = get_organization_id()
+        inventory = db.session.query(Inventory).join(Product).filter(
+            Inventory.product_id == product_id,
+            Product.organization_id == org_id
+        ).first()
         if not inventory:
             return jsonify({'message': 'Inventory not found'}), 404
         

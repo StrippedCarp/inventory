@@ -2,17 +2,24 @@ import React, { useState, useEffect } from 'react';
 import {
   Box, Card, CardContent, Typography, Button, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Paper, IconButton, Dialog, DialogTitle,
-  DialogContent, DialogActions, TextField, MenuItem, Chip, Alert
+  DialogContent, DialogActions, TextField, MenuItem, Chip, Alert, CircularProgress
 } from '@mui/material';
-import { Edit, Delete, Add, PersonAdd } from '@mui/icons-material';
+import { Edit, Delete, Add, PersonAdd, Email, Business } from '@mui/icons-material';
 import Layout from '../components/Layout';
+import InviteUserDialog from '../components/InviteUserDialog';
+import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
+import handleApiError from '../utils/errorHandler';
 
 const API_URL = 'http://localhost:5000/api';
 
 const UsersPage = () => {
+  const { user } = useAuth();
   const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saveLoading, setSaveLoading] = useState(false);
   const [openDialog, setOpenDialog] = useState(false);
+  const [openInviteDialog, setOpenInviteDialog] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [formData, setFormData] = useState({ username: '', email: '', password: '', role: 'viewer' });
   const [error, setError] = useState('');
@@ -22,12 +29,32 @@ const UsersPage = () => {
     fetchUsers();
   }, []);
 
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(''), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => setSuccess(''), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
+
   const fetchUsers = async () => {
     try {
-      const response = await axios.get(`${API_URL}/users`);
+      setLoading(true);
+      const token = localStorage.getItem('access_token');
+      const response = await axios.get(`${API_URL}/users`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setUsers(response.data);
     } catch (error) {
-      console.error('Error fetching users:', error);
+      setError(handleApiError(error));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -52,30 +79,40 @@ const UsersPage = () => {
 
   const handleSubmit = async () => {
     try {
+      setSaveLoading(true);
+      setError('');
+      const token = localStorage.getItem('access_token');
       if (editingUser) {
-        await axios.put(`${API_URL}/users/${editingUser.id}`, formData);
+        await axios.put(`${API_URL}/users/${editingUser.id}`, formData, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
         setSuccess('User updated successfully');
       } else {
-        await axios.post(`${API_URL}/users`, formData);
+        await axios.post(`${API_URL}/users`, formData, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
         setSuccess('User created successfully');
       }
       fetchUsers();
       handleCloseDialog();
-      setTimeout(() => setSuccess(''), 3000);
     } catch (error) {
-      setError(error.response?.data?.message || 'Error saving user');
+      setError(handleApiError(error));
+    } finally {
+      setSaveLoading(false);
     }
   };
 
   const handleDelete = async (id) => {
     if (window.confirm('Are you sure you want to delete this user?')) {
       try {
-        await axios.delete(`${API_URL}/users/${id}`);
+        const token = localStorage.getItem('access_token');
+        await axios.delete(`${API_URL}/users/${id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
         setSuccess('User deleted successfully');
         fetchUsers();
-        setTimeout(() => setSuccess(''), 3000);
       } catch (error) {
-        setError('Error deleting user');
+        setError(handleApiError(error));
       }
     }
   };
@@ -92,10 +129,23 @@ const UsersPage = () => {
     <Layout>
       <Box>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h4">User Management</Typography>
-          <Button variant="contained" startIcon={<PersonAdd />} onClick={() => handleOpenDialog()}>
-            Add User
-          </Button>
+          <Box>
+            <Typography variant="h4">User Management</Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+              <Business fontSize="small" color="action" />
+              <Typography variant="body2" color="text.secondary">
+                Managing users in {user?.organization_name || 'Default Organization'}
+              </Typography>
+            </Box>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button variant="outlined" startIcon={<Email />} onClick={() => setOpenInviteDialog(true)}>
+              Invite User
+            </Button>
+            <Button variant="contained" startIcon={<PersonAdd />} onClick={() => handleOpenDialog()}>
+              Add User
+            </Button>
+          </Box>
         </Box>
 
         {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
@@ -103,7 +153,18 @@ const UsersPage = () => {
 
         <Card>
           <CardContent>
-            <TableContainer component={Paper}>
+            {loading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress />
+              </Box>
+            ) : users.length === 0 ? (
+              <Box sx={{ textAlign: 'center', py: 4 }}>
+                <Typography variant="h6" color="text.secondary">
+                  No users found.
+                </Typography>
+              </Box>
+            ) : (
+              <TableContainer component={Paper}>
               <Table>
                 <TableHead>
                   <TableRow>
@@ -137,7 +198,8 @@ const UsersPage = () => {
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+              </TableContainer>
+            )}
           </CardContent>
         </Card>
 
@@ -185,12 +247,21 @@ const UsersPage = () => {
             </TextField>
           </DialogContent>
           <DialogActions>
-            <Button onClick={handleCloseDialog}>Cancel</Button>
-            <Button onClick={handleSubmit} variant="contained">
-              {editingUser ? 'Update' : 'Create'}
+            <Button onClick={handleCloseDialog} disabled={saveLoading}>Cancel</Button>
+            <Button onClick={handleSubmit} variant="contained" disabled={saveLoading}>
+              {saveLoading ? <CircularProgress size={24} color="inherit" /> : (editingUser ? 'Update' : 'Create')}
             </Button>
           </DialogActions>
         </Dialog>
+
+        <InviteUserDialog
+          open={openInviteDialog}
+          onClose={() => setOpenInviteDialog(false)}
+          onSuccess={(msg) => {
+            setSuccess(msg);
+            setTimeout(() => setSuccess(''), 3000);
+          }}
+        />
       </Box>
     </Layout>
   );

@@ -34,10 +34,19 @@ const SuppliersPage = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [contactDialog, setContactDialog] = useState(false);
+  const [addDialog, setAddDialog] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState(null);
   const [contactForm, setContactForm] = useState({
     message: '',
     contact_method: 'email'
+  });
+  const [supplierForm, setSupplierForm] = useState({
+    name: '',
+    contact_person: '',
+    email: '',
+    phone: '',
+    lead_time_days: 7,
+    rating: 5.0
   });
 
   useEffect(() => {
@@ -84,10 +93,35 @@ const SuppliersPage = () => {
     }
   };
 
+  const handleAddSupplier = async () => {
+    try {
+      await suppliersAPI.create(supplierForm);
+      setSuccess('Supplier added successfully');
+      setAddDialog(false);
+      setSupplierForm({
+        name: '',
+        contact_person: '',
+        email: '',
+        phone: '',
+        lead_time_days: 7,
+        rating: 5.0
+      });
+      fetchSuppliers();
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError('Failed to add supplier');
+    }
+  };
+
   return (
     <Layout>
       <Box>
-        <Typography variant="h4" sx={{ mb: 3 }}>Suppliers</Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Typography variant="h4">Suppliers</Typography>
+          <Button variant="contained" onClick={() => setAddDialog(true)}>
+            Add Supplier
+          </Button>
+        </Box>
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
         {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
@@ -172,6 +206,62 @@ const SuppliersPage = () => {
             <Button onClick={() => setContactDialog(false)}>Cancel</Button>
             <Button onClick={handleSendContact} variant="contained" startIcon={<SendIcon />}>
               Send
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog open={addDialog} onClose={() => setAddDialog(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>Add New Supplier</DialogTitle>
+          <DialogContent>
+            <Box sx={{ display: 'grid', gap: 2, mt: 1 }}>
+              <TextField
+                label="Supplier Name"
+                value={supplierForm.name}
+                onChange={(e) => setSupplierForm({ ...supplierForm, name: e.target.value })}
+                fullWidth
+                required
+              />
+              <TextField
+                label="Contact Person"
+                value={supplierForm.contact_person}
+                onChange={(e) => setSupplierForm({ ...supplierForm, contact_person: e.target.value })}
+                fullWidth
+              />
+              <TextField
+                label="Email"
+                type="email"
+                value={supplierForm.email}
+                onChange={(e) => setSupplierForm({ ...supplierForm, email: e.target.value })}
+                fullWidth
+                required
+              />
+              <TextField
+                label="Phone"
+                value={supplierForm.phone}
+                onChange={(e) => setSupplierForm({ ...supplierForm, phone: e.target.value })}
+                fullWidth
+              />
+              <TextField
+                label="Lead Time (Days)"
+                type="number"
+                value={supplierForm.lead_time_days}
+                onChange={(e) => setSupplierForm({ ...supplierForm, lead_time_days: parseInt(e.target.value) })}
+                fullWidth
+              />
+              <TextField
+                label="Rating (1-5)"
+                type="number"
+                inputProps={{ min: 1, max: 5, step: 0.1 }}
+                value={supplierForm.rating}
+                onChange={(e) => setSupplierForm({ ...supplierForm, rating: parseFloat(e.target.value) })}
+                fullWidth
+              />
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setAddDialog(false)}>Cancel</Button>
+            <Button onClick={handleAddSupplier} variant="contained">
+              Add Supplier
             </Button>
           </DialogActions>
         </Dialog>

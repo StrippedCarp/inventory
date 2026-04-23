@@ -11,6 +11,8 @@ class Supplier(db.Model):
     phone = db.Column(db.String(20))
     lead_time_days = db.Column(db.Integer, default=7)
     rating = db.Column(db.Float, default=5.0)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Relationships

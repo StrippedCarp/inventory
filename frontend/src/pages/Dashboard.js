@@ -23,7 +23,9 @@ import {
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 import { inventoryAPI, salesAPI, alertsAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
+import ActivityFeed from '../components/ActivityFeed';
 
 const Dashboard = () => {
   const [summary, setSummary] = useState({});
@@ -34,6 +36,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const { hasRole } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     loadDashboardData();
@@ -327,6 +330,24 @@ const Dashboard = () => {
                   ))}
                 </Box>
               )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Recent Activity */}
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Recent Activity
+              </Typography>
+              <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
+                <ActivityFeed 
+                  limit={20} 
+                  showViewAll={true} 
+                  onViewAll={() => navigate('/activity')}
+                />
+              </Box>
             </CardContent>
           </Card>
         </Grid>

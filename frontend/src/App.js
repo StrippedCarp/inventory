@@ -4,6 +4,8 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider } from './context/AuthContext';
 import Login from './pages/Login';
+import AcceptInvite from './pages/AcceptInvite';
+import NotFound from './pages/NotFound';
 import Dashboard from './pages/Dashboard';
 import InventoryPage from './pages/InventoryPage';
 import ForecastPage from './pages/ForecastPage';
@@ -17,6 +19,10 @@ import ReportsPage from './pages/ReportsPage';
 import SalesPage from './pages/SalesPage';
 import AlertsPage from './pages/AlertsPage';
 import UsersPage from './pages/UsersPage';
+import AdminPortal from './pages/AdminPortal';
+import AdminCompetitorsPage from './pages/AdminCompetitorsPage';
+import OrganizationPage from './pages/OrganizationPage';
+import ActivityPage from './pages/ActivityPage';
 import ProtectedRoute from './components/ProtectedRoute';
 
 const theme = createTheme({
@@ -62,6 +68,7 @@ function App() {
         <Router>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/invite" element={<AcceptInvite />} />
             <Route path="/dashboard" element={
               <ProtectedRoute>
                 <Dashboard />
@@ -127,7 +134,28 @@ function App() {
                 <UsersPage />
               </ProtectedRoute>
             } />
+            <Route path="/admin" element={
+              <ProtectedRoute requiredRole="admin">
+                <AdminPortal />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/competitors" element={
+              <ProtectedRoute requiredRole="admin">
+                <AdminCompetitorsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/organization" element={
+              <ProtectedRoute requiredRole="manager">
+                <OrganizationPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/activity" element={
+              <ProtectedRoute requiredRole="manager">
+                <ActivityPage />
+              </ProtectedRoute>
+            } />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </Router>
       </AuthProvider>

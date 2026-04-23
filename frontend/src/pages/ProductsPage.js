@@ -21,6 +21,7 @@ import {
   IconButton,
   Chip,
   Alert,
+  CircularProgress,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -30,10 +31,12 @@ import {
 import Layout from '../components/Layout';
 import { productsAPI } from '../services/api';
 import api from '../services/api';
+import handleApiError from '../utils/errorHandler';
 
 const ProductsPage = () => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [saveLoading, setSaveLoading] = useState(false);
   const [error, setError] = useState('');
   const [open, setOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
@@ -51,67 +54,23 @@ const ProductsPage = () => {
   const categories = ['Electronics', 'Clothing', 'Food', 'Books', 'Home', 'Sports'];
 
   useEffect(() => {
-    // Test backend connection first
-    const testConnection = async () => {
-      try {
-        const response = await fetch('http://localhost:5000/api/health');
-        if (response.ok) {
-          console.log('✅ Backend connected');
-          fetchProducts();
-        } else {
-          throw new Error('Backend not responding');
-        }
-      } catch (err) {
-        console.error('❌ Backend connection failed:', err);
-        setError('Backend not connected - using demo mode');
-        // Load demo data
-        setProducts([
-          {
-            id: 1,
-            sku: 'LAPTOP-001',
-            name: 'Business Laptop',
-            category: 'Electronics',
-            unit_price: 899.99,
-            current_stock: 15,
-            reorder_level: 10
-          }
-        ]);
-        setLoading(false);
-      }
-    };
-    
-    testConnection();
+    fetchProducts();
   }, []);
+
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(''), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
 
   const fetchProducts = async () => {
     try {
-      // Try the correct API first
+      setLoading(true);
       const response = await productsAPI.getAll();
       setProducts(response.data.products || response.data || []);
     } catch (err) {
-      console.error('Fetch error:', err);
-      // Fallback to mock data if API fails
-      setProducts([
-        {
-          id: 1,
-          sku: 'LAPTOP-001',
-          name: 'Business Laptop',
-          category: 'Electronics',
-          unit_price: 899.99,
-          current_stock: 15,
-          reorder_level: 10
-        },
-        {
-          id: 2,
-          sku: 'MOUSE-001',
-          name: 'Wireless Mouse',
-          category: 'Electronics',
-          unit_price: 29.99,
-          current_stock: 25,
-          reorder_level: 15
-        }
-      ]);
-      setError('Using demo data - backend not connected');
+      setError(handleApiError(err));
     } finally {
       setLoading(false);
     }
@@ -121,11 +80,8 @@ const ProductsPage = () => {
     e.preventDefault();
     
     try {
-      // Basic validation
-      if (!formData.name || !formData.sku || !formData.category || !formData.unit_price) {
-        setError('Please fill in all required fields (Name, SKU, Category, Price)');
-        return;
-      }
+      setSaveLoading(true);
+      setError('');
 
       const submitData = {
         name: formData.name.trim(),
@@ -137,12 +93,9 @@ const ProductsPage = () => {
         safety_stock: parseInt(formData.safety_stock) || 5,
       };
       
-      // Only include supplier_id if it's provided
       if (formData.supplier_id) {
         submitData.supplier_id = parseInt(formData.supplier_id);
       }
-
-      console.log('Submitting product data:', submitData);
 
       if (editingProduct) {
         await productsAPI.update(editingProduct.id, submitData);
@@ -152,11 +105,10 @@ const ProductsPage = () => {
       
       await fetchProducts();
       handleClose();
-      setError(''); // Clear any previous errors
     } catch (err) {
-      console.error('Product save error:', err);
-      const errorMsg = err.response?.data?.message || err.message || 'Failed to save product';
-      setError(errorMsg);
+      setError(handleApiError(err));
+    } finally {
+      setSaveLoading(false);
     }
   };
 
@@ -164,9 +116,9 @@ const ProductsPage = () => {
     if (window.confirm('Are you sure you want to delete this product?')) {
       try {
         await productsAPI.delete(id);
-        fetchProducts();
+        await fetchProducts();
       } catch (err) {
-        setError('Failed to delete product');
+        setError(handleApiError(err));
       }
     }
   };
@@ -225,7 +177,18 @@ const ProductsPage = () => {
 
         <Card>
           <CardContent>
-            <TableContainer component={Paper}>
+            {loading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress />
+              </Box>
+            ) : products.length === 0 ? (
+              <Box sx={{ textAlign: 'center', py: 4 }}>
+                <Typography variant="h6" color="text.secondary">
+                  No products found. Add your first product.
+                </Typography>
+              </Box>
+            ) : (
+              <TableContainer component={Paper}>
               <Table>
                 <TableHead>
                   <TableRow>
@@ -257,7 +220,8 @@ const ProductsPage = () => {
                     ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+              </TableContainer>
+            )}
           </CardContent>
         </Card>
 
@@ -337,9 +301,9 @@ const ProductsPage = () => {
             </Box>
           </DialogContent>
           <DialogActions>
-            <Button onClick={handleClose}>Cancel</Button>
-            <Button type="submit" onClick={handleSubmit} variant="contained">
-              {editingProduct ? 'Update' : 'Create'}
+            <Button onClick={handleClose} disabled={saveLoading}>Cancel</Button>
+            <Button type="submit" onClick={handleSubmit} variant="contained" disabled={saveLoading}>
+              {saveLoading ? <CircularProgress size={24} color="inherit" /> : (editingProduct ? 'Update' : 'Create')}
             </Button>
           </DialogActions>
         </Dialog>

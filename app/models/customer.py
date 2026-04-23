@@ -6,7 +6,7 @@ class Customer(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
-    email = db.Column(db.String(200), unique=True, nullable=True)
+    email = db.Column(db.String(200), nullable=True)
     phone = db.Column(db.String(20), nullable=True)
     address = db.Column(db.Text, nullable=True)
     customer_type = db.Column(db.String(20), default='regular')  # regular, vip, wholesale
@@ -17,8 +17,12 @@ class Customer(db.Model):
     outstanding_balance = db.Column(db.Float, default=0.0)
     status = db.Column(db.String(20), default='active')  # active, inactive, blocked
     notes = db.Column(db.Text, nullable=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    __table_args__ = (db.UniqueConstraint('email', 'organization_id', name='unique_email_per_org'),)
     
     def to_dict(self):
         return {

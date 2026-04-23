@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
+from app.utils.organization_context import get_organization_id
 from app.models.batch import Batch, BatchTransaction
 from app.models.product import Product
 from datetime import datetime, date
@@ -8,14 +9,15 @@ from datetime import datetime, date
 batches_bp = Blueprint('batches', __name__)
 
 @batches_bp.route('', methods=['GET'])
-@jwt_required(optional=True)
+@jwt_required()
 def get_batches():
     """Get all batches with optional filters"""
     try:
+        org_id = get_organization_id()
         product_id = request.args.get('product_id', type=int)
         status = request.args.get('status')
         
-        query = Batch.query
+        query = db.session.query(Batch).join(Product).filter(Product.organization_id == org_id)
         
         if product_id:
             query = query.filter_by(product_id=product_id)
@@ -28,11 +30,15 @@ def get_batches():
         return jsonify({'error': str(e)}), 500
 
 @batches_bp.route('/<int:batch_id>', methods=['GET'])
-@jwt_required(optional=True)
+@jwt_required()
 def get_batch(batch_id):
     """Get batch details"""
     try:
-        batch = Batch.query.get(batch_id)
+        org_id = get_organization_id()
+        batch = db.session.query(Batch).join(Product).filter(
+            Batch.id == batch_id,
+            Product.organization_id == org_id
+        ).first()
         if not batch:
             return jsonify({'message': 'Batch not found'}), 404
         
@@ -47,10 +53,11 @@ def get_batch(batch_id):
 def create_batch():
     """Create new batch"""
     try:
+        org_id = get_organization_id()
         data = request.get_json()
         
-        # Validate product exists
-        product = Product.query.get(data['product_id'])
+        # Validate product exists and belongs to user
+        product = Product.query.filter_by(id=data['product_id'], user_id=user_id).first()
         if not product:
             return jsonify({'message': 'Product not found'}), 404
         
@@ -81,7 +88,11 @@ def create_batch():
 def update_batch(batch_id):
     """Update batch"""
     try:
-        batch = Batch.query.get(batch_id)
+        org_id = get_organization_id()
+        batch = db.session.query(Batch).join(Product).filter(
+            Batch.id == batch_id,
+            Product.organization_id == org_id
+        ).first()
         if not batch:
             return jsonify({'message': 'Batch not found'}), 404
         
@@ -103,14 +114,16 @@ def update_batch(batch_id):
         return jsonify({'error': str(e)}), 500
 
 @batches_bp.route('/expiring', methods=['GET'])
-@jwt_required(optional=True)
+@jwt_required()
 def get_expiring_batches():
     """Get batches expiring soon"""
     try:
+        org_id = get_organization_id()
         days = request.args.get('days', 30, type=int)
         today = date.today()
         
-        batches = Batch.query.filter(
+        batches = db.session.query(Batch).join(Product).filter(
+            Product.organization_id == org_id,
             Batch.expiry_date.isnot(None),
             Batch.expiry_date <= date.today().replace(day=today.day + days),
             Batch.status == 'active',
@@ -122,14 +135,19 @@ def get_expiring_batches():
         return jsonify({'error': str(e)}), 500
 
 @batches_bp.route('/valuation', methods=['GET'])
-@jwt_required(optional=True)
+@jwt_required()
 def get_inventory_valuation():
     """Calculate inventory valuation using FIFO or LIFO"""
     try:
+        org_id = get_organization_id()
         method = request.args.get('method', 'fifo').lower()  # fifo or lifo
         product_id = request.args.get('product_id', type=int)
         
-        query = Batch.query.filter_by(status='active').filter(Batch.quantity > 0)
+        query = db.session.query(Batch).join(Product).filter(
+            Product.organization_id == org_id,
+            Batch.status == 'active',
+            Batch.quantity > 0
+        )
         
         if product_id:
             query = query.filter_by(product_id=product_id)
@@ -172,16 +190,19 @@ def get_inventory_valuation():
 def allocate_batch():
     """Allocate quantity from batch (FIFO by default)"""
     try:
+        org_id = get_organization_id()
         data = request.get_json()
         product_id = data['product_id']
         quantity_needed = data['quantity']
         method = data.get('method', 'fifo').lower()
         
-        # Get available batches
-        query = Batch.query.filter_by(
-            product_id=product_id,
-            status='active'
-        ).filter(Batch.quantity > 0)
+        # Get available batches for user's products
+        query = db.session.query(Batch).join(Product).filter(
+            Product.organization_id == org_id,
+            Batch.product_id == product_id,
+            Batch.status == 'active',
+            Batch.quantity > 0
+        )
         
         if method == 'fifo':
             batches = query.order_by(Batch.received_date.asc()).all()

@@ -7,17 +7,11 @@ const api = axios.create({
   timeout: 10000,
 });
 
-// Add token to requests (skip for public endpoints)
+// Add token to requests
 api.interceptors.request.use((config) => {
-  // Public endpoints that don't require auth
-  const publicPaths = ['/competitors', '/auth/login', '/auth/register', '/suppliers', '/customers', '/batches', '/analytics/dashboard'];
-  const isPublic = publicPaths.some(path => config.url?.startsWith(path) || config.url?.includes(`/api${path}`));
-  
-  if (!isPublic) {
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+  const token = localStorage.getItem('access_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
@@ -28,11 +22,7 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
     
-    // Don't retry for public endpoints
-    const publicPaths = ['/competitors', '/auth/login', '/auth/register', '/suppliers', '/customers', '/batches', '/analytics/dashboard'];
-    const isPublic = publicPaths.some(path => originalRequest.url?.startsWith(path) || originalRequest.url?.includes(`/api${path}`));
-    
-    if (error.response?.status === 401 && !isPublic && !originalRequest._retry) {
+    if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       const refreshToken = localStorage.getItem('refresh_token');
       if (refreshToken) {

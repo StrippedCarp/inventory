@@ -34,6 +34,8 @@ import {
   PersonOutline as CustomersIcon,
   Inventory2 as BatchesIcon,
   Description as ReportsIcon,
+  AdminPanelSettings,
+  History as ActivityIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -60,6 +62,10 @@ const Layout = ({ children }) => {
     { text: 'Competitors', icon: <TrendingUp />, path: '/competitors', roles: ['viewer', 'manager', 'admin'] },
     { text: 'Analytics', icon: <AnalyticsIcon />, path: '/analytics', roles: ['viewer', 'manager', 'admin'] },
     { text: 'Reports', icon: <ReportsIcon />, path: '/reports', roles: ['viewer', 'manager', 'admin'] },
+    { text: 'Activity', icon: <ActivityIcon />, path: '/activity', roles: ['manager', 'admin'] },
+    { text: 'Organization', icon: <Settings />, path: '/organization', roles: ['manager', 'admin'] },
+    { text: 'Admin Portal', icon: <AdminPanelSettings />, path: '/admin', roles: ['admin', 'manager'] },
+    { text: 'Manage Competitors', icon: <TrendingUp />, path: '/admin/competitors', roles: ['admin'] },
     { text: 'Users', icon: <ManageAccounts />, path: '/users', roles: ['admin'] },
   ];
 
@@ -137,10 +143,15 @@ const Layout = ({ children }) => {
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             {menuItems.find(item => item.path === location.pathname)?.text || 'Dashboard'}
           </Typography>
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <Typography variant="body2" sx={{ mr: 2 }}>
-              {user?.username} ({user?.role})
-            </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+              <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                {user?.organization_name || 'Default Organization'}
+              </Typography>
+              <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                {user?.username} • {user?.role}
+              </Typography>
+            </Box>
             <IconButton
               size="large"
               aria-label="account of current user"

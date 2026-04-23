@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, send_file
 from flask_jwt_extended import jwt_required
 from app import db
+from app.utils.organization_context import get_organization_id
 from app.models.sales_transaction import SalesTransaction
 from app.models.product import Product
 from app.models.inventory import Inventory
@@ -20,9 +21,11 @@ from reportlab.lib.styles import getSampleStyleSheet
 analytics_bp = Blueprint('analytics', __name__)
 
 @analytics_bp.route('/dashboard', methods=['GET'])
+@jwt_required()
 def get_dashboard_analytics():
     """Get comprehensive dashboard analytics"""
     try:
+        org_id = get_organization_id()
         end_date = date.today()
         start_date = end_date - timedelta(days=90)
         
@@ -32,7 +35,8 @@ def get_dashboard_analytics():
             func.sum(SalesTransaction.quantity_sold).label('total_quantity'),
             func.sum(SalesTransaction.total_amount).label('total_revenue'),
             func.count(SalesTransaction.id).label('transaction_count')
-        ).filter(
+        ).join(Product).filter(
+            Product.organization_id == org_id,
             SalesTransaction.sale_date >= start_date
         ).group_by(SalesTransaction.sale_date).order_by(SalesTransaction.sale_date).all()
         
@@ -45,6 +49,7 @@ def get_dashboard_analytics():
         ).join(SalesTransaction, Product.id == SalesTransaction.product_id
         ).join(Inventory, Product.id == Inventory.product_id
         ).filter(
+            Product.organization_id == org_id,
             SalesTransaction.sale_date >= start_date
         ).group_by(Product.category).all()
         
@@ -57,6 +62,7 @@ def get_dashboard_analytics():
             func.sum(SalesTransaction.total_amount).label('total_revenue')
         ).join(SalesTransaction, Product.id == SalesTransaction.product_id
         ).filter(
+            Product.organization_id == org_id,
             SalesTransaction.sale_date >= start_date
         ).group_by(Product.id, Product.name, Product.sku).order_by(
             func.sum(SalesTransaction.quantity_sold).desc()
@@ -70,7 +76,9 @@ def get_dashboard_analytics():
                 (Inventory.quantity_on_hand <= Product.reorder_point, 'low_stock'),
                 else_='in_stock'
             ).label('status')
-        ).join(Product, Inventory.product_id == Product.id).group_by('status').all()
+        ).join(Product, Inventory.product_id == Product.id).filter(
+            Product.organization_id == org_id
+        ).group_by('status').all()
         
         # Forecast accuracy (if available)
         forecast_accuracy = db.session.query(
@@ -81,14 +89,17 @@ def get_dashboard_analytics():
         ).first()
         
         # KPIs
-        total_products = Product.query.count()
+        total_products = Product.query.filter_by(organization_id=org_id).count()
         total_inventory_value = db.session.query(
             func.sum(Inventory.quantity_on_hand * Product.unit_price)
-        ).join(Product, Inventory.product_id == Product.id).scalar() or 0
+        ).join(Product, Inventory.product_id == Product.id).filter(
+            Product.organization_id == org_id
+        ).scalar() or 0
         
         avg_turnover = 0  # Simplified to avoid complex calculation
         
-        stockout_count = db.session.query(func.count()).select_from(Inventory).filter(
+        stockout_count = db.session.query(func.count()).select_from(Inventory).join(Product).filter(
+            Product.organization_id == org_id,
             Inventory.quantity_on_hand == 0
         ).scalar() or 0
         stockout_rate = (stockout_count / max(total_products, 1)) * 100

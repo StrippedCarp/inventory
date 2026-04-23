@@ -1,5 +1,6 @@
 from app import db
 from datetime import datetime
+from app.models.organization import Organization
 
 class PurchaseOrder(db.Model):
     __tablename__ = 'purchase_orders'

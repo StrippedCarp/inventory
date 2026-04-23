@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Navigate, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Navigate, Link, useLocation } from 'react-router-dom';
 import { 
   Container, 
   Paper, 
@@ -13,24 +13,54 @@ import {
   FormControl,
   InputLabel,
   Select,
-  MenuItem
+  MenuItem,
+  InputAdornment,
+  IconButton,
+  CircularProgress
 } from '@mui/material';
+import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
+import handleApiError from '../utils/errorHandler';
 
 const Login = () => {
+  const location = useLocation();
   const [tabValue, setTabValue] = useState(0);
   const [loginData, setLoginData] = useState({ username: '', password: '' });
   const [registerData, setRegisterData] = useState({ 
+    organization_name: '',
     username: '', 
     email: '', 
     password: '', 
-    confirmPassword: '',
-    role: 'viewer'
+    confirmPassword: ''
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const { login, isAuthenticated } = useAuth();
+
+  useEffect(() => {
+    if (location.state?.message) {
+      setSuccess(location.state.message);
+      setTimeout(() => setSuccess(''), 5000);
+    }
+  }, [location]);
+
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(''), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => setSuccess(''), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
 
   if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />;
@@ -41,13 +71,16 @@ const Login = () => {
     setLoading(true);
     setError('');
 
-    const result = await login(loginData);
-    if (result.success) {
-      // Navigation handled by AuthContext
-    } else {
-      setError(result.error);
+    try {
+      const result = await login(loginData);
+      if (!result.success) {
+        setError(result.error);
+      }
+    } catch (err) {
+      setError(handleApiError(err));
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleRegister = async (e) => {
@@ -62,31 +95,38 @@ const Login = () => {
       return;
     }
 
+    if (!registerData.organization_name.trim()) {
+      setError('Organization name is required');
+      setLoading(false);
+      return;
+    }
+
     try {
       const response = await fetch('http://localhost:5000/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          organization_name: registerData.organization_name,
           username: registerData.username,
           email: registerData.email,
-          password: registerData.password,
-          role: registerData.role
+          password: registerData.password
         })
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        setSuccess('Registration successful! You can now login.');
-        setTabValue(0); // Switch to login tab
-        setRegisterData({ username: '', email: '', password: '', confirmPassword: '', role: 'viewer' });
+        setSuccess(`Organization "${data.organization_name}" created! You can now login as admin.`);
+        setTabValue(0);
+        setRegisterData({ organization_name: '', username: '', email: '', password: '', confirmPassword: '' });
       } else {
         setError(data.message || 'Registration failed');
       }
     } catch (err) {
-      setError('Network error. Please try again.');
+      setError(handleApiError(err));
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -118,11 +158,23 @@ const Login = () => {
               <TextField
                 fullWidth
                 label="Password"
-                type="password"
+                type={showLoginPassword ? 'text' : 'password'}
                 margin="normal"
                 value={loginData.password}
                 onChange={(e) => setLoginData({...loginData, password: e.target.value})}
                 required
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() => setShowLoginPassword(!showLoginPassword)}
+                        edge="end"
+                      >
+                        {showLoginPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  )
+                }}
               />
               <Button
                 type="submit"
@@ -131,7 +183,7 @@ const Login = () => {
                 sx={{ mt: 3, mb: 2 }}
                 disabled={loading}
               >
-                {loading ? 'Signing in...' : 'Sign In'}
+                {loading ? <CircularProgress size={24} color="inherit" /> : 'Sign In'}
               </Button>
               
               <Typography variant="body2" color="textSecondary" align="center">
@@ -142,6 +194,15 @@ const Login = () => {
 
           {tabValue === 1 && (
             <Box component="form" onSubmit={handleRegister} sx={{ mt: 2 }}>
+              <TextField
+                fullWidth
+                label="Organization / Company Name"
+                margin="normal"
+                value={registerData.organization_name}
+                onChange={(e) => setRegisterData({...registerData, organization_name: e.target.value})}
+                required
+                helperText="You will be the admin of this organization"
+              />
               <TextField
                 fullWidth
                 label="Username"
@@ -159,35 +220,47 @@ const Login = () => {
                 onChange={(e) => setRegisterData({...registerData, email: e.target.value})}
                 required
               />
-              <FormControl fullWidth margin="normal">
-                <InputLabel>Role</InputLabel>
-                <Select
-                  value={registerData.role}
-                  onChange={(e) => setRegisterData({...registerData, role: e.target.value})}
-                  label="Role"
-                >
-                  <MenuItem value="viewer">Viewer</MenuItem>
-                  <MenuItem value="manager">Manager</MenuItem>
-                  <MenuItem value="admin">Admin</MenuItem>
-                </Select>
-              </FormControl>
               <TextField
                 fullWidth
                 label="Password"
-                type="password"
+                type={showRegisterPassword ? 'text' : 'password'}
                 margin="normal"
                 value={registerData.password}
                 onChange={(e) => setRegisterData({...registerData, password: e.target.value})}
                 required
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() => setShowRegisterPassword(!showRegisterPassword)}
+                        edge="end"
+                      >
+                        {showRegisterPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  )
+                }}
               />
               <TextField
                 fullWidth
                 label="Confirm Password"
-                type="password"
+                type={showConfirmPassword ? 'text' : 'password'}
                 margin="normal"
                 value={registerData.confirmPassword}
                 onChange={(e) => setRegisterData({...registerData, confirmPassword: e.target.value})}
                 required
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        edge="end"
+                      >
+                        {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  )
+                }}
               />
               <Button
                 type="submit"
@@ -196,7 +269,7 @@ const Login = () => {
                 sx={{ mt: 3, mb: 2 }}
                 disabled={loading}
               >
-                {loading ? 'Registering...' : 'Register'}
+                {loading ? <CircularProgress size={24} color="inherit" /> : 'Register'}
               </Button>
             </Box>
           )}

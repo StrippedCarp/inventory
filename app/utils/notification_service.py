@@ -174,7 +174,7 @@ class NotificationService:
     @classmethod
     def send_supplier_contact(cls, supplier, user, message, method='email'):
         """
-        Send contact request to supplier
+        Send contact request to supplier with push notification
         
         Args:
             supplier: Supplier model instance
@@ -182,6 +182,8 @@ class NotificationService:
             message: Contact message
             method: 'email' or 'sms'
         """
+        success = False
+        
         if method == 'email' and supplier.email:
             subject = f"Contact Request from {user.username}"
             full_message = f"""
@@ -196,13 +198,18 @@ Message:
 This is an automated message from the Inventory Management System.
             """.strip()
             
-            return cls.send_email(supplier.email, subject, full_message)
+            success = cls.send_email(supplier.email, subject, full_message)
         
         elif method == 'sms' and supplier.phone:
             sms_message = f"{user.username}: {message[:140]}"  # SMS character limit
-            return cls.send_sms(supplier.phone, sms_message)
+            success = cls.send_sms(supplier.phone, sms_message)
         
-        return False
+        # Log notification attempt
+        status = "sent" if success else "failed"
+        print(f"[NOTIFICATION] Supplier contact via {method}: {status}")
+        print(f"[NOTIFICATION] From: {user.username} To: {supplier.name}")
+        
+        return success
     
     @classmethod
     def send_low_stock_alert(cls, product, inventory, recipients):
@@ -243,19 +250,19 @@ Automated alert from Inventory Management System
         
         print("Email Configuration:")
         print(f"  SMTP Server: {cls.SMTP_SERVER}:{cls.SMTP_PORT}")
-        print(f"  Username: {'✓ Configured' if cls.SMTP_USERNAME else '✗ Not configured'}")
-        print(f"  Password: {'✓ Configured' if cls.SMTP_PASSWORD else '✗ Not configured'}")
+        print(f"  Username: {'[Configured]' if cls.SMTP_USERNAME else '[Not configured]'}")
+        print(f"  Password: {'[Configured]' if cls.SMTP_PASSWORD else '[Not configured]'}")
         print(f"  From Email: {cls.FROM_EMAIL}")
         
         print("\nSMS Configuration (Africa's Talking):")
-        print(f"  Username: {'✓ Configured' if cls.AT_USERNAME else '✗ Not configured'}")
-        print(f"  API Key: {'✓ Configured' if cls.AT_API_KEY else '✗ Not configured'}")
+        print(f"  Username: {'[Configured]' if cls.AT_USERNAME else '[Not configured]'}")
+        print(f"  API Key: {'[Configured]' if cls.AT_API_KEY else '[Not configured]'}")
         print(f"  Sender ID: {cls.AT_SENDER_ID}")
         
         print("\nSMS Configuration (Twilio):")
-        print(f"  Account SID: {'✓ Configured' if cls.TWILIO_ACCOUNT_SID else '✗ Not configured'}")
-        print(f"  Auth Token: {'✓ Configured' if cls.TWILIO_AUTH_TOKEN else '✗ Not configured'}")
-        print(f"  Phone Number: {cls.TWILIO_PHONE_NUMBER or '✗ Not configured'}")
+        print(f"  Account SID: {'[Configured]' if cls.TWILIO_ACCOUNT_SID else '[Not configured]'}")
+        print(f"  Auth Token: {'[Configured]' if cls.TWILIO_AUTH_TOKEN else '[Not configured]'}")
+        print(f"  Phone Number: {cls.TWILIO_PHONE_NUMBER or '[Not configured]'}")
         
         print("\n" + "="*40 + "\n")
 

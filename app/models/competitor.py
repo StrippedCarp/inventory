@@ -11,9 +11,11 @@ class Competitor(db.Model):
     location = db.Column(db.String(100))
     phone = db.Column(db.String(20))
     email = db.Column(db.String(120))
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Relationships
+    organization = db.relationship('Organization', backref='competitors')
     sales_data = db.relationship('CompetitorSales', backref='competitor', lazy=True, cascade='all, delete-orphan')
     products = db.relationship('CompetitorProduct', backref='competitor', lazy=True, cascade='all, delete-orphan')
     

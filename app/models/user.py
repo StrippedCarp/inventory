@@ -10,7 +10,13 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(20), nullable=False, default='viewer')
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships for user-specific data
+    products = db.relationship('Product', backref='owner', lazy=True, cascade='all, delete-orphan')
+    suppliers = db.relationship('Supplier', backref='owner', lazy=True, cascade='all, delete-orphan')
+    customers = db.relationship('Customer', backref='owner', lazy=True, cascade='all, delete-orphan')
     
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -24,5 +30,7 @@ class User(db.Model):
             'username': self.username,
             'email': self.email,
             'role': self.role,
+            'organization_id': self.organization_id,
+            'organization_name': self.organization.name if self.organization else None,
             'created_at': self.created_at.isoformat()
         }

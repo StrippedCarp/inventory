@@ -20,6 +20,7 @@ class SupplierContact(db.Model):
         return {
             'id': self.id,
             'user_id': self.user_id,
+            'user_name': self.user.username if self.user else None,
             'supplier_id': self.supplier_id,
             'supplier_name': self.supplier.name if self.supplier else None,
             'message': self.message,

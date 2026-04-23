@@ -3,6 +3,7 @@ from flask_jwt_extended import jwt_required
 from app import db
 from app.models.competitor import Competitor, CompetitorSales, CompetitorProduct
 from app.utils.auth_decorators import admin_required
+from app.utils.organization_context import get_organization_id, get_user_id
 from datetime import datetime, date
 
 admin_competitors_bp = Blueprint('admin_competitors', __name__)
@@ -10,8 +11,9 @@ admin_competitors_bp = Blueprint('admin_competitors', __name__)
 @admin_competitors_bp.route('', methods=['POST'])
 @admin_required
 def create_competitor():
-    """Admin: Create new competitor"""
+    """Admin: Create new competitor in current organization"""
     try:
+        org_id = get_organization_id()
         data = request.get_json()
         
         required_fields = ['business_name', 'category']
@@ -25,7 +27,8 @@ def create_competitor():
             category=data['category'],
             location=data.get('location'),
             phone=data.get('phone'),
-            email=data.get('email')
+            email=data.get('email'),
+            organization_id=org_id
         )
         
         db.session.add(competitor)
@@ -39,9 +42,10 @@ def create_competitor():
 @admin_competitors_bp.route('/<int:competitor_id>', methods=['PUT'])
 @admin_required
 def update_competitor(competitor_id):
-    """Admin: Update competitor"""
+    """Admin: Update competitor in current organization"""
     try:
-        competitor = Competitor.query.get(competitor_id)
+        org_id = get_organization_id()
+        competitor = Competitor.query.filter_by(id=competitor_id, organization_id=org_id).first()
         if not competitor:
             return jsonify({'message': 'Competitor not found'}), 404
         
@@ -61,9 +65,10 @@ def update_competitor(competitor_id):
 @admin_competitors_bp.route('/<int:competitor_id>', methods=['DELETE'])
 @admin_required
 def delete_competitor(competitor_id):
-    """Admin: Delete competitor"""
+    """Admin: Delete competitor from current organization"""
     try:
-        competitor = Competitor.query.get(competitor_id)
+        org_id = get_organization_id()
+        competitor = Competitor.query.filter_by(id=competitor_id, organization_id=org_id).first()
         if not competitor:
             return jsonify({'message': 'Competitor not found'}), 404
         
@@ -78,9 +83,10 @@ def delete_competitor(competitor_id):
 @admin_competitors_bp.route('/<int:competitor_id>/sales', methods=['POST'])
 @admin_required
 def add_competitor_sales(competitor_id):
-    """Admin: Add sales data for competitor"""
+    """Admin: Add sales data for competitor in current organization"""
     try:
-        competitor = Competitor.query.get(competitor_id)
+        org_id = get_organization_id()
+        competitor = Competitor.query.filter_by(id=competitor_id, organization_id=org_id).first()
         if not competitor:
             return jsonify({'message': 'Competitor not found'}), 404
         
@@ -105,9 +111,10 @@ def add_competitor_sales(competitor_id):
 @admin_competitors_bp.route('/<int:competitor_id>/products', methods=['POST'])
 @admin_required
 def add_competitor_product(competitor_id):
-    """Admin: Add product for competitor"""
+    """Admin: Add product for competitor in current organization"""
     try:
-        competitor = Competitor.query.get(competitor_id)
+        org_id = get_organization_id()
+        competitor = Competitor.query.filter_by(id=competitor_id, organization_id=org_id).first()
         if not competitor:
             return jsonify({'message': 'Competitor not found'}), 404
         
@@ -183,9 +190,10 @@ def delete_competitor_product(competitor_id, product_id):
 @admin_competitors_bp.route('/all', methods=['GET'])
 @admin_required
 def get_all_competitors_admin():
-    """Admin: Get all competitors (no filtering)"""
+    """Admin: Get all competitors in current organization"""
     try:
-        competitors = Competitor.query.all()
+        org_id = get_organization_id()
+        competitors = Competitor.query.filter_by(organization_id=org_id).all()
         
         result = []
         for comp in competitors:

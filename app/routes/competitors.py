@@ -4,27 +4,36 @@ from app import db
 from app.models.competitor import Competitor, CompetitorSales, CompetitorProduct
 from app.models.user import User
 from app.models.product import Product
+from app.utils.organization_context import get_organization_id, get_user_id
 from sqlalchemy import func
 from datetime import datetime, timedelta
 
 competitors_bp = Blueprint('competitors', __name__)
 
 @competitors_bp.route('', methods=['GET'])
-@jwt_required(optional=True)
+@jwt_required()
 def get_competitors():
-    """Get competitors filtered by user's business category"""
+    """Get competitors filtered by user's business category and organization"""
     try:
-        user_id = get_jwt_identity()
+        org_id = get_organization_id()
+        user_id = get_user_id()
         
         # Get user's product categories
-        user_categories = db.session.query(Product.category).distinct().all()
+        user_categories = db.session.query(Product.category).filter_by(
+            user_id=user_id,
+            organization_id=org_id
+        ).distinct().all()
         user_categories = [cat[0] for cat in user_categories]
         
-        # Filter competitors by matching categories
+        # Filter competitors by matching categories AND organization
         if user_categories:
-            competitors = Competitor.query.filter(Competitor.category.in_(user_categories)).all()
+            competitors = Competitor.query.filter(
+                Competitor.category.in_(user_categories),
+                Competitor.organization_id == org_id
+            ).all()
         else:
-            competitors = Competitor.query.all()
+            # If user has no products yet, show no competitors
+            competitors = []
         
         result = []
         for comp in competitors:
@@ -39,7 +48,11 @@ def get_competitors():
             
             result.append(comp_dict)
         
-        return jsonify(result), 200
+        return jsonify({
+            'competitors': result,
+            'user_categories': user_categories,
+            'message': f'Showing competitors in your categories: {", ".join(user_categories)}' if user_categories else 'Add products to see relevant competitors'
+        }), 200
     except Exception as e:
         print(f"Competitors error: {str(e)}")
         import traceback
@@ -47,11 +60,12 @@ def get_competitors():
         return jsonify({'error': str(e)}), 500
 
 @competitors_bp.route('/<int:competitor_id>', methods=['GET'])
-@jwt_required(optional=True)
+@jwt_required()
 def get_competitor_details(competitor_id):
-    """Get detailed competitor information"""
+    """Get detailed competitor information from current organization"""
     try:
-        competitor = Competitor.query.get(competitor_id)
+        org_id = get_organization_id()
+        competitor = Competitor.query.filter_by(id=competitor_id, organization_id=org_id).first()
         if not competitor:
             return jsonify({'message': 'Competitor not found'}), 404
         
@@ -77,7 +91,7 @@ def get_competitor_details(competitor_id):
         return jsonify({'error': str(e)}), 500
 
 @competitors_bp.route('/<int:competitor_id>/products', methods=['GET'])
-@jwt_required(optional=True)
+@jwt_required()
 def get_competitor_products(competitor_id):
     """Get competitor's products and pricing"""
     try:
@@ -87,7 +101,7 @@ def get_competitor_products(competitor_id):
         return jsonify({'error': str(e)}), 500
 
 @competitors_bp.route('/<int:competitor_id>/sales', methods=['GET'])
-@jwt_required(optional=True)
+@jwt_required()
 def get_competitor_sales(competitor_id):
     """Get competitor's sales data"""
     try:
@@ -107,18 +121,25 @@ def get_competitor_sales(competitor_id):
         return jsonify({'error': str(e)}), 500
 
 @competitors_bp.route('/comparison', methods=['GET'])
-@jwt_required(optional=True)
+@jwt_required()
 def compare_with_competitors():
-    """Compare user's business with competitors"""
+    """Compare user's business with competitors in same organization"""
     try:
-        user_id = get_jwt_identity()
+        org_id = get_organization_id()
+        user_id = get_user_id()
         
         # Get user's categories
-        user_categories = db.session.query(Product.category).distinct().all()
+        user_categories = db.session.query(Product.category).filter_by(
+            user_id=user_id,
+            organization_id=org_id
+        ).distinct().all()
         user_categories = [cat[0] for cat in user_categories]
         
-        # Get competitors in same categories
-        competitors = Competitor.query.filter(Competitor.category.in_(user_categories)).all()
+        # Get competitors in same categories AND organization
+        competitors = Competitor.query.filter(
+            Competitor.category.in_(user_categories),
+            Competitor.organization_id == org_id
+        ).all()
         
         comparison = []
         for comp in competitors:

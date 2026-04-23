@@ -2,20 +2,26 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
 from app.models.customer import Customer, CustomerPricing, LoyaltyTransaction
+from app.models.customer_contact import CustomerContact
+from app.models.user import User
 from app.models.sales_transaction import SalesTransaction
+from app.utils.notification_service import NotificationService
+from app.utils.organization_context import get_organization_id, get_user_id
+from app.utils.activity_logger import log_activity
 from sqlalchemy import func
 
 customers_bp = Blueprint('customers', __name__)
 
 @customers_bp.route('', methods=['GET'])
-@jwt_required(optional=True)
+@jwt_required()
 def get_customers():
     """Get all customers"""
     try:
+        org_id = get_organization_id()
         status = request.args.get('status')
         customer_type = request.args.get('type')
         
-        query = Customer.query
+        query = Customer.query.filter_by(organization_id=org_id)
         
         if status:
             query = query.filter_by(status=status)
@@ -28,11 +34,12 @@ def get_customers():
         return jsonify({'error': str(e)}), 500
 
 @customers_bp.route('/<int:customer_id>', methods=['GET'])
-@jwt_required(optional=True)
+@jwt_required()
 def get_customer(customer_id):
     """Get customer details with purchase history"""
     try:
-        customer = Customer.query.get(customer_id)
+        org_id = get_organization_id()
+        customer = Customer.query.filter_by(id=customer_id, organization_id=org_id).first()
         if not customer:
             return jsonify({'message': 'Customer not found'}), 404
         
@@ -59,15 +66,26 @@ def get_customer(customer_id):
 def create_customer():
     """Create new customer"""
     try:
+        org_id = get_organization_id()
+        user_id = get_user_id()
         data = request.get_json()
         
-        # Check if email already exists
+        # Validate required fields
+        if not data.get('name'):
+            return jsonify({'error': 'Validation error', 'message': 'Customer name is required'}), 400
+        
+        if not data.get('email'):
+            return jsonify({'error': 'Validation error', 'message': 'Email is required'}), 400
+        
+        # Check if email already exists for this organization
         if data.get('email'):
-            existing = Customer.query.filter_by(email=data['email']).first()
+            existing = Customer.query.filter_by(email=data['email'], organization_id=org_id).first()
             if existing:
-                return jsonify({'message': 'Email already exists'}), 400
+                return jsonify({'error': 'Validation error', 'message': 'Email already exists'}), 400
         
         customer = Customer(
+            user_id=user_id,
+            organization_id=org_id,
             name=data['name'],
             email=data.get('email'),
             phone=data.get('phone'),
@@ -81,6 +99,11 @@ def create_customer():
         db.session.add(customer)
         db.session.commit()
         
+        # Log activity
+        user = User.query.get(user_id)
+        if user:
+            log_activity(org_id, user_id, user.username, 'created', 'customer', customer.name)
+        
         return jsonify(customer.to_dict()), 201
     except Exception as e:
         db.session.rollback()
@@ -91,7 +114,8 @@ def create_customer():
 def update_customer(customer_id):
     """Update customer"""
     try:
-        customer = Customer.query.get(customer_id)
+        org_id = get_organization_id()
+        customer = Customer.query.filter_by(id=customer_id, organization_id=org_id).first()
         if not customer:
             return jsonify({'message': 'Customer not found'}), 404
         
@@ -117,6 +141,13 @@ def update_customer(customer_id):
             customer.notes = data['notes']
         
         db.session.commit()
+        
+        # Log activity
+        user_id = get_user_id()
+        user = User.query.get(user_id)
+        if user:
+            log_activity(org_id, user_id, user.username, 'updated', 'customer', customer.name)
+        
         return jsonify(customer.to_dict()), 200
     except Exception as e:
         db.session.rollback()
@@ -127,7 +158,8 @@ def update_customer(customer_id):
 def add_loyalty_points(customer_id):
     """Add or redeem loyalty points"""
     try:
-        customer = Customer.query.get(customer_id)
+        org_id = get_organization_id()
+        customer = Customer.query.filter_by(id=customer_id, organization_id=org_id).first()
         if not customer:
             return jsonify({'message': 'Customer not found'}), 404
         
@@ -164,7 +196,8 @@ def add_loyalty_points(customer_id):
 def set_special_price(customer_id):
     """Set special price for customer on specific product"""
     try:
-        customer = Customer.query.get(customer_id)
+        org_id = get_organization_id()
+        customer = Customer.query.filter_by(id=customer_id, organization_id=org_id).first()
         if not customer:
             return jsonify({'message': 'Customer not found'}), 404
         
@@ -197,9 +230,11 @@ def set_special_price(customer_id):
 def remove_special_price(customer_id, product_id):
     """Remove special price"""
     try:
-        pricing = CustomerPricing.query.filter_by(
-            customer_id=customer_id,
-            product_id=product_id
+        org_id = get_organization_id()
+        pricing = db.session.query(CustomerPricing).join(Customer).filter(
+            CustomerPricing.customer_id == customer_id,
+            CustomerPricing.product_id == product_id,
+            Customer.organization_id == org_id
         ).first()
         
         if not pricing:
@@ -214,27 +249,29 @@ def remove_special_price(customer_id, product_id):
         return jsonify({'error': str(e)}), 500
 
 @customers_bp.route('/top', methods=['GET'])
-@jwt_required(optional=True)
+@jwt_required()
 def get_top_customers():
     """Get top customers by purchase amount"""
     try:
+        org_id = get_organization_id()
         limit = request.args.get('limit', 10, type=int)
         
-        customers = Customer.query.filter_by(status='active').order_by(Customer.total_purchases.desc()).limit(limit).all()
+        customers = Customer.query.filter_by(organization_id=org_id, status='active').order_by(Customer.total_purchases.desc()).limit(limit).all()
         
         return jsonify([customer.to_dict() for customer in customers]), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 @customers_bp.route('/<int:customer_id>/price/<int:product_id>', methods=['GET'])
-@jwt_required(optional=True)
+@jwt_required()
 def get_customer_price(customer_id, product_id):
     """Get price for customer (special price or regular with discount)"""
     try:
+        org_id = get_organization_id()
         from app.models.product import Product
         
-        customer = Customer.query.get(customer_id)
-        product = Product.query.get(product_id)
+        customer = Customer.query.filter_by(id=customer_id, organization_id=org_id).first()
+        product = Product.query.filter_by(id=product_id, organization_id=org_id).first()
         
         if not customer or not product:
             return jsonify({'message': 'Customer or product not found'}), 404
@@ -262,4 +299,58 @@ def get_customer_price(customer_id, product_id):
             'discount_percentage': customer.discount_percentage
         }), 200
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@customers_bp.route('/<int:customer_id>/contact', methods=['POST'])
+@jwt_required()
+def contact_customer(customer_id):
+    """Contact customer via email or SMS"""
+    try:
+        org_id = get_organization_id()
+        user_id = get_user_id()
+        user = User.query.get(user_id)
+        customer = Customer.query.filter_by(id=customer_id, organization_id=org_id).first()
+        
+        if not user:
+            return jsonify({'message': 'User not found'}), 404
+        
+        if not customer:
+            return jsonify({'message': 'Customer not found'}), 404
+        
+        data = request.get_json()
+        message = data.get('message', '')
+        contact_method = data.get('contact_method', 'email')
+        
+        if not message:
+            return jsonify({'message': 'Message is required'}), 400
+        
+        contact = CustomerContact(
+            user_id=user_id,
+            customer_id=customer_id,
+            message=message,
+            contact_method=contact_method
+        )
+        
+        success = False
+        if contact_method == 'email' and customer.email:
+            subject = f"Message from {user.username}"
+            full_message = f"From: {user.username} ({user.email})\n\n{message}"
+            success = NotificationService.send_email(customer.email, subject, full_message)
+        elif contact_method == 'sms' and customer.phone:
+            sms_message = f"{user.username}: {message}"
+            success = NotificationService.send_sms(customer.phone, sms_message)
+        
+        contact.status = 'sent' if success else 'failed'
+        db.session.add(contact)
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Contact request sent successfully' if success else 'Failed to send contact request',
+            'contact': contact.to_dict()
+        }), 200
+    except Exception as e:
+        print(f"Customer contact error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        db.session.rollback()
         return jsonify({'error': str(e)}), 500

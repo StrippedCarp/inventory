@@ -3,22 +3,25 @@ from flask_jwt_extended import jwt_required
 from app import db
 from app.models.sales_transaction import SalesTransaction
 from app.models.product import Product
+from app.utils.organization_context import get_organization_id
 from datetime import datetime, date, timedelta
 from sqlalchemy import func, extract
 
 sales_bp = Blueprint('sales', __name__)
 
 @sales_bp.route('', methods=['GET'])
+@jwt_required()
 def get_sales():
     """Get sales transactions with filtering"""
     try:
+        org_id = get_organization_id()
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 20, type=int)
         product_id = request.args.get('product_id', type=int)
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
         
-        query = db.session.query(SalesTransaction, Product).join(Product)
+        query = db.session.query(SalesTransaction, Product).join(Product).filter(Product.organization_id == org_id)
         
         # Apply filters
         if product_id:
@@ -54,9 +57,11 @@ def get_sales():
         return jsonify({'error': str(e)}), 500
 
 @sales_bp.route('/analytics/daily', methods=['GET'])
+@jwt_required()
 def get_daily_sales():
     """Get daily sales analytics for the last 30 days"""
     try:
+        org_id = get_organization_id()
         end_date = date.today()
         start_date = end_date - timedelta(days=30)
         
@@ -65,7 +70,8 @@ def get_daily_sales():
             func.sum(SalesTransaction.quantity_sold).label('total_quantity'),
             func.sum(SalesTransaction.total_amount).label('total_revenue'),
             func.count(SalesTransaction.id).label('transaction_count')
-        ).filter(
+        ).join(Product).filter(
+            Product.organization_id == org_id,
             SalesTransaction.sale_date >= start_date,
             SalesTransaction.sale_date <= end_date
         ).group_by(SalesTransaction.sale_date).order_by(SalesTransaction.sale_date).all()
@@ -85,9 +91,11 @@ def get_daily_sales():
         return jsonify({'error': str(e)}), 500
 
 @sales_bp.route('/analytics/top-products', methods=['GET'])
+@jwt_required()
 def get_top_selling_products():
     """Get top selling products by quantity and revenue"""
     try:
+        org_id = get_organization_id()
         days = request.args.get('days', 30, type=int)
         limit = request.args.get('limit', 10, type=int)
         
@@ -101,6 +109,7 @@ def get_top_selling_products():
             func.sum(SalesTransaction.total_amount).label('total_revenue'),
             func.count(SalesTransaction.id).label('transaction_count')
         ).join(SalesTransaction).filter(
+            Product.organization_id == org_id,
             SalesTransaction.sale_date >= start_date
         ).group_by(
             Product.id, Product.name, Product.sku
@@ -125,15 +134,18 @@ def get_top_selling_products():
         return jsonify({'error': str(e)}), 500
 
 @sales_bp.route('/analytics/monthly', methods=['GET'])
+@jwt_required()
 def get_monthly_sales():
     """Get monthly sales analytics for the last 12 months"""
     try:
+        org_id = get_organization_id()
         monthly_sales = db.session.query(
             extract('year', SalesTransaction.sale_date).label('year'),
             extract('month', SalesTransaction.sale_date).label('month'),
             func.sum(SalesTransaction.quantity_sold).label('total_quantity'),
             func.sum(SalesTransaction.total_amount).label('total_revenue')
-        ).filter(
+        ).join(Product).filter(
+            Product.organization_id == org_id,
             SalesTransaction.sale_date >= date.today() - timedelta(days=365)
         ).group_by(
             extract('year', SalesTransaction.sale_date),
