@@ -2,7 +2,50 @@
 
 Complete inventory management system with ML-based demand forecasting, customer management, batch tracking, and organization-based multi-tenancy for SMEs.
 
-## Quick Start
+## Quick Start with Docker (Recommended) 🐳
+
+### Prerequisites
+- Install [Docker Desktop](https://www.docker.com/products/docker-desktop)
+- Start Docker Desktop and wait for "Engine running" status
+
+### Automated Setup (Easiest)
+```bash
+# Clone repository
+git clone https://github.com/StrippedCarp/inventory.git
+cd inventory
+
+# Windows
+setup.bat
+
+# Mac/Linux
+chmod +x setup.sh
+./setup.sh
+```
+
+### Manual Setup
+```bash
+# 1. Start containers
+docker-compose up -d
+
+# 2. Initialize database (first time only)
+docker-compose exec backend python scripts/init_sqlite.py
+docker-compose exec backend python scripts/add_activity_logs_table.py
+docker-compose exec backend python scripts/add_org_to_competitors.py
+docker-compose exec backend python scripts/seed_activities.py
+```
+
+**Access**: http://localhost:3000  
+**Login**: username: `admin`, password: `password123`
+
+### Docker Commands
+```bash
+docker-compose up -d      # Start
+docker-compose down       # Stop
+docker-compose logs -f    # View logs
+docker-compose restart    # Restart
+```
+
+## Traditional Setup (Without Docker)
 
 ```bash
 # Backend setup
@@ -18,9 +61,6 @@ cd frontend
 npm install
 npm start
 ```
-
-**Access**: http://localhost:3000  
-**Login**: username: `admin`, password: `password123`
 
 ## Key Features
 
@@ -45,6 +85,7 @@ npm start
 📖 **[Complete System Documentation](SYSTEM_DOCUMENTATION.md)** - Full feature guide  
 📊 **[Activity Feed Guide](ACTIVITY_FEED.md)** - Activity logging details  
 🏢 **[Organization Management](ORGANIZATION_MANAGEMENT.md)** - Multi-tenancy guide  
+🐳 **[Docker Setup Guide](DOCKER_SETUP.md)** - Containerized deployment  
 
 ## Tech Stack
 
